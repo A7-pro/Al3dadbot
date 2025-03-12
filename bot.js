@@ -4,7 +4,7 @@ const fs = require('fs');
 const schedule = require('node-schedule');
 
 // ضع التوكن الخاص بالبوت هنا
-const BOT_TOKEN = "YOUR_BOT_TOKEN_HERE";
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
 // ملف لتخزين المستخدمين المشتركين في الإشعارات
