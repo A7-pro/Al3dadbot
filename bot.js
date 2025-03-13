@@ -1,11 +1,12 @@
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
+const schedule = require('node-schedule');
 
 // 🔹 استخدام المتغيرات البيئية لتوكن البوت
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
-// 🔹 API للمواقيت والصلاة والأذكار والقرآن الكريم
+// 🔹 API للمواقيت، الأذكار، القرآن، والراديو
 const PRAYER_API = "https://api.aladhan.com/v1/timingsByCity?city={city}&country=SA&method=4";
 const AZKAR_API = "https://raw.githubusercontent.com/nawafalqari/azkar-api/56df51279ab6eb86dc2f6202c7de26c8948331c1/azkar.json";
 const RADIO_API = "https://data-rosy.vercel.app/radio.json";
@@ -19,7 +20,7 @@ const cities = {
     riyadh: "Riyadh"
 };
 
-// 🔹 دالة لجلب مواقيت الصلاة من API
+// 🔹 دالة لجلب مواقيت الصلاة
 async function getPrayerTimes(cityKey) {
     const city = cities[cityKey];
     const url = PRAYER_API.replace("{city}", city);
@@ -40,7 +41,7 @@ async function getPrayerTimes(cityKey) {
     }
 }
 
-// 🔹 دالة لجلب الأذكار من API
+// 🔹 دالة لجلب الأذكار
 async function getAzkar() {
     try {
         const response = await axios.get(AZKAR_API);
@@ -53,7 +54,7 @@ async function getAzkar() {
     }
 }
 
-// 🔹 دالة لجلب إذاعة القرآن من API
+// 🔹 دالة لجلب إذاعات القرآن
 async function getRadioStations() {
     try {
         const response = await axios.get(RADIO_API);
@@ -69,7 +70,7 @@ async function getRadioStations() {
     }
 }
 
-// 🔹 دالة لجلب سورة من القرآن من API
+// 🔹 دالة لجلب سورة من القرآن
 async function getQuranSurah(surahNumber) {
     try {
         const url = `${QURAN_API}${surahNumber}`;
@@ -91,7 +92,9 @@ bot.start((ctx) => {
     ctx.reply("👋 أهلاً بك في البوت! اختر من الأزرار التالية:", 
         Markup.keyboard([
             ["🕌 مواقيت الصلاة", "📿 أذكار"],
-            ["📻 إذاعات القرآن", "📖 سورة من القرآن"]
+            ["📻 إذاعات القرآن", "📖 سورة من القرآن"],
+            ["📖 سورة الكهف", "🔔 تفعيل تذكيرات الصلاة"],
+            ["🛠 تواصل مع المطور"]
         ]).resize()
     );
 });
@@ -132,28 +135,34 @@ bot.hears("📻 إذاعات القرآن", async (ctx) => {
     ctx.reply(radios);
 });
 
-// 📖 إرسال سورة من القرآن بناءً على اختيار المستخدم
-bot.hears("📖 سورة من القرآن", (ctx) => {
-    ctx.reply("🔢 أدخل رقم السورة التي تريد قراءتها (مثلاً: 1 للفاتحة، 114 للناس)");
+// 📖 إرسال سورة الكهف PDF
+bot.hears("📖 سورة الكهف", (ctx) => {
+    ctx.replyWithDocument({ source: 'الكهف.pdf' });
 });
 
-// 📖 استقبال رقم السورة وإرسال الآيات
-bot.on("text", async (ctx) => {
-    const surahNumber = parseInt(ctx.message.text);
-    if (!isNaN(surahNumber) && surahNumber >= 1 && surahNumber <= 114) {
-        const surahText = await getQuranSurah(surahNumber);
-        ctx.reply(surahText);
-    }
+// 🔔 تفعيل تذكيرات الصلاة
+bot.hears("🔔 تفعيل تذكيرات الصلاة", (ctx) => {
+    ctx.reply("✅ تم تفعيل تذكيرات الصلاة!");
+    schedule.scheduleJob("0 5 * * *", () => {
+        bot.telegram.sendMessage(ctx.chat.id, "🕌 حان وقت صلاة الفجر!");
+    });
+    schedule.scheduleJob("0 12 * * *", () => {
+        bot.telegram.sendMessage(ctx.chat.id, "🕌 حان وقت صلاة الظهر!");
+    });
+    schedule.scheduleJob("0 15 * * *", () => {
+        bot.telegram.sendMessage(ctx.chat.id, "🕌 حان وقت صلاة العصر!");
+    });
+    schedule.scheduleJob("0 18 * * *", () => {
+        bot.telegram.sendMessage(ctx.chat.id, "🕌 حان وقت صلاة المغرب!");
+    });
+    schedule.scheduleJob("0 20 * * *", () => {
+        bot.telegram.sendMessage(ctx.chat.id, "🕌 حان وقت صلاة العشاء!");
+    });
 });
 
-// 🔙 زر الرجوع إلى القائمة الرئيسية
-bot.hears("🔙 رجوع", (ctx) => {
-    ctx.reply("🔙 رجعتك للقائمة الرئيسية:", 
-        Markup.keyboard([
-            ["🕌 مواقيت الصلاة", "📿 أذكار"],
-            ["📻 إذاعات القرآن", "📖 سورة من القرآن"]
-        ]).resize()
-    );
+// 🛠 تواصل مع المطور
+bot.hears("🛠 تواصل مع المطور", (ctx) => {
+    ctx.reply("📩 تواصل مع المطور عبر تيليجرام: @tahikal");
 });
 
 // 🚀 تشغيل البوت
