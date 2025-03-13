@@ -1,17 +1,17 @@
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
-const fs = require('fs');
-const schedule = require('node-schedule');
 
-// ضع التوكن الخاص بالبوت هنا
+// 🔹 استخدام المتغيرات البيئية لتوكن البوت
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
-// ملف لتخزين المستخدمين المشتركين في الإشعارات
-const notificationsFile = 'notifications.json';
-let notifications = fs.existsSync(notificationsFile) ? JSON.parse(fs.readFileSync(notificationsFile, 'utf-8')) : {};
+// 🔹 API للمواقيت والصلاة والأذكار والقرآن الكريم
+const PRAYER_API = "https://api.aladhan.com/v1/timingsByCity?city={city}&country=SA&method=4";
+const AZKAR_API = "https://raw.githubusercontent.com/nawafalqari/azkar-api/56df51279ab6eb86dc2f6202c7de26c8948331c1/azkar.json";
+const RADIO_API = "https://data-rosy.vercel.app/radio.json";
+const QURAN_API = "https://api.alquran.cloud/v1/surah/";
 
-// 🕌 قائمة المدن
+// 🔹 قائمة المدن المتاحة لمواقيت الصلاة
 const cities = {
     makkah: "Mecca",
     madinah: "Medina",
@@ -19,134 +19,141 @@ const cities = {
     riyadh: "Riyadh"
 };
 
-// API لجلب مواقيت الصلاة
-const apiURL = "https://api.aladhan.com/v1/timingsByCity?city={city}&country=SA&method=4";
-
-// 📌 دالة لجلب مواقيت الصلاة مع إضافة 3 دقائق
+// 🔹 دالة لجلب مواقيت الصلاة من API
 async function getPrayerTimes(cityKey) {
     const city = cities[cityKey];
-    const url = apiURL.replace("{city}", city);
+    const url = PRAYER_API.replace("{city}", city);
     try {
         const response = await axios.get(url);
         const timings = response.data.data.timings;
-
-        return {
-            text: `
+        return `
 📍 **${cityKey.toUpperCase()}**
-- الفجر: ${adjustTime(timings.Fajr)}
-- الظهر: ${adjustTime(timings.Dhuhr)}
-- العصر: ${adjustTime(timings.Asr)}
-- المغرب: ${adjustTime(timings.Maghrib)}
-- العشاء: ${adjustTime(timings.Isha)}
-        `,
-            timings: timings
-        };
+- الفجر: ${timings.Fajr}
+- الظهر: ${timings.Dhuhr}
+- العصر: ${timings.Asr}
+- المغرب: ${timings.Maghrib}
+- العشاء: ${timings.Isha}
+        `;
     } catch (error) {
         console.error(`❌ خطأ في جلب مواقيت الصلاة لـ ${cityKey}`, error);
-        return { text: "❌ حدث خطأ أثناء جلب مواقيت الصلاة.", timings: null };
+        return "❌ حدث خطأ أثناء جلب مواقيت الصلاة.";
     }
 }
 
-// 📌 دالة لإضافة 3 دقائق إلى الوقت
-function adjustTime(time) {
-    let [hours, minutes] = time.split(":").map(Number);
-    minutes += 3;
-    if (minutes >= 60) {
-        minutes -= 60;
-        hours += 1;
+// 🔹 دالة لجلب الأذكار من API
+async function getAzkar() {
+    try {
+        const response = await axios.get(AZKAR_API);
+        const azkar = response.data;
+        const randomZikr = azkar[Math.floor(Math.random() * azkar.length)];
+        return `📿 **${randomZikr.category}**\n\n${randomZikr.zekr}\n\n🤲 ${randomZikr.description || ""}`;
+    } catch (error) {
+        console.error("❌ خطأ في جلب الأذكار:", error);
+        return "❌ حدث خطأ أثناء جلب الأذكار.";
     }
-    return `${hours}:${minutes < 10 ? "0" + minutes : minutes}`;
 }
 
-// 🔘 قائمة الأوامر الرئيسية عند `/start`
+// 🔹 دالة لجلب إذاعة القرآن من API
+async function getRadioStations() {
+    try {
+        const response = await axios.get(RADIO_API);
+        const stations = response.data.radios;
+        let message = "📻 **إذاعات القرآن الكريم:**\n\n";
+        stations.forEach((station, index) => {
+            message += `🎙 **${station.name}**\n🔊 ${station.url}\n\n`;
+        });
+        return message;
+    } catch (error) {
+        console.error("❌ خطأ في جلب إذاعات القرآن:", error);
+        return "❌ حدث خطأ أثناء جلب إذاعات القرآن.";
+    }
+}
+
+// 🔹 دالة لجلب سورة من القرآن من API
+async function getQuranSurah(surahNumber) {
+    try {
+        const url = `${QURAN_API}${surahNumber}`;
+        const response = await axios.get(url);
+        const surah = response.data.data;
+        let message = `📖 **${surah.englishName} - ${surah.name}**\n\n`;
+        surah.ayahs.forEach(ayah => {
+            message += `(${ayah.numberInSurah}) ${ayah.text}\n\n`;
+        });
+        return message;
+    } catch (error) {
+        console.error("❌ خطأ في جلب السورة:", error);
+        return "❌ حدث خطأ أثناء جلب السورة.";
+    }
+}
+
+// 🔹 عند تشغيل البوت - عرض قائمة الأوامر ككيبورد
 bot.start((ctx) => {
     ctx.reply("👋 أهلاً بك في البوت! اختر من الأزرار التالية:", 
-        Markup.inlineKeyboard([
-            [Markup.button.callback("🕌 مواقيت الصلاة", "prayer_times")],
-            [Markup.button.callback("🔔 تفعيل إشعارات الصلاة", "enable_notifications")],
-            [Markup.button.callback("📿 الأدعية", "duas")],
-            [Markup.button.callback("📖 سورة الكهف", "kahf")],
-            [Markup.button.callback("🛠️ تواصل مع المطور", "contact_dev")]
-        ])
+        Markup.keyboard([
+            ["🕌 مواقيت الصلاة", "📿 أذكار"],
+            ["📻 إذاعات القرآن", "📖 سورة من القرآن"]
+        ]).resize()
     );
 });
 
-// 📿 إرسال قائمة الأدعية كأزرار إنلاين
-bot.action("duas", (ctx) => {
-    ctx.reply("📿 اختر نوع الدعاء:", 
-        Markup.inlineKeyboard([
-            [Markup.button.callback("🌞 دعاء الصباح", "dua_sabah"), Markup.button.callback("🌙 دعاء المساء", "dua_masaa")],
-            [Markup.button.callback("💰 دعاء الرزق", "dua_rizq"), Markup.button.callback("🤲 دعاء الاستغفار", "dua_istighfar")],
-            [Markup.button.callback("❤️ دعاء الشفاء", "dua_shifa"), Markup.button.callback("🕊️ دعاء التوفيق", "dua_tawfiq")],
-            [Markup.button.callback("🙏 دعاء المغفرة", "dua_maghfirah"), Markup.button.callback("⚖️ دعاء الصبر", "dua_sabr")],
-            [Markup.button.callback("🔙 رجوع", "start")]
-        ])
+// 🕌 عرض مواقيت الصلاة ككيبورد
+bot.hears("🕌 مواقيت الصلاة", (ctx) => {
+    ctx.reply("📍 اختر المدينة:", 
+        Markup.keyboard([
+            ["🕋 مكة", "🏙 المدينة"],
+            ["🌊 جدة", "🏢 الرياض"],
+            ["🔙 رجوع"]
+        ]).resize()
     );
 });
 
-// 📿 استقبال استجابة ضغط الأزرار للأدعية
-bot.action(/^dua_(.+)$/, (ctx) => {
-    const type = ctx.match[1];
-    ctx.reply(`📿 **${type.replace("_", " ")}:**\n\n${type}`);
+// 🕌 استقبال استجابة المدن لمواقيت الصلاة
+bot.hears(["🕋 مكة", "🏙 المدينة", "🌊 جدة", "🏢 الرياض"], async (ctx) => {
+    const cityMap = {
+        "🕋 مكة": "makkah",
+        "🏙 المدينة": "madinah",
+        "🌊 جدة": "jeddah",
+        "🏢 الرياض": "riyadh"
+    };
+    const cityKey = cityMap[ctx.message.text];
+    const times = await getPrayerTimes(cityKey);
+    ctx.reply(times);
 });
 
-// 🕌 إرسال قائمة مواقيت الصلاة كأزرار إنلاين
-bot.action("prayer_times", (ctx) => {
-    ctx.reply("🕌 اختر المدينة:", 
-        Markup.inlineKeyboard([
-            [Markup.button.callback("🕋 مكة", "makkah"), Markup.button.callback("🏙️ المدينة", "madinah")],
-            [Markup.button.callback("🌊 جدة", "jeddah"), Markup.button.callback("🏢 الرياض", "riyadh")],
-            [Markup.button.callback("🔙 رجوع", "start")]
-        ])
-    );
+// 📿 إرسال أذكار عشوائية
+bot.hears("📿 أذكار", async (ctx) => {
+    const zikr = await getAzkar();
+    ctx.reply(zikr);
 });
 
-// 🕌 استقبال استجابة ضغط الأزرار لمواقيت الصلاة
-bot.action(/^makkah|madinah|jeddah|riyadh$/, async (ctx) => {
-    const cityKey = ctx.match[0];
-    const response = await getPrayerTimes(cityKey);
-    ctx.reply(response.text);
+// 📻 إرسال إذاعات القرآن الكريم
+bot.hears("📻 إذاعات القرآن", async (ctx) => {
+    const radios = await getRadioStations();
+    ctx.reply(radios);
 });
 
-// 🔔 تفعيل إشعارات الصلاة
-bot.action("enable_notifications", (ctx) => {
-    ctx.reply("📍 اختر المدينة التي تريد تفعيل الإشعارات لها:", 
-        Markup.inlineKeyboard([
-            [Markup.button.callback("🕋 مكة", "notify_makkah"), Markup.button.callback("🏙️ المدينة", "notify_madinah")],
-            [Markup.button.callback("🌊 جدة", "notify_jeddah"), Markup.button.callback("🏢 الرياض", "notify_riyadh")],
-            [Markup.button.callback("❌ إيقاف الإشعارات", "disable_notifications")],
-            [Markup.button.callback("🔙 رجوع", "start")]
-        ])
-    );
+// 📖 إرسال سورة من القرآن بناءً على اختيار المستخدم
+bot.hears("📖 سورة من القرآن", (ctx) => {
+    ctx.reply("🔢 أدخل رقم السورة التي تريد قراءتها (مثلاً: 1 للفاتحة، 114 للناس)");
 });
 
-// تفعيل الإشعارات حسب المدينة
-bot.action(/^notify_(.+)$/, (ctx) => {
-    const cityKey = ctx.match[1];
-    notifications[ctx.chat.id] = cityKey;
-    fs.writeFileSync(notificationsFile, JSON.stringify(notifications));
-    ctx.reply(`✅ تم تفعيل الإشعارات لمدينة ${cityKey.toUpperCase()}!`);
-});
-
-// إيقاف الإشعارات
-bot.action("disable_notifications", (ctx) => {
-    delete notifications[ctx.chat.id];
-    fs.writeFileSync(notificationsFile, JSON.stringify(notifications));
-    ctx.reply("❌ تم إيقاف الإشعارات بنجاح!");
-});
-
-// 🛠️ التواصل مع المطور
-bot.action("contact_dev", (ctx) => {
-    ctx.reply("💬 للتواصل مع المطور، يمكنك مراسلته عبر تيليجرام: @tahikal");
-});
-
-// إرسال إشعارات الصلاة لكل مستخدم
-schedule.scheduleJob("0 * * * *", async () => {
-    for (let chatId in notifications) {
-        const cityKey = notifications[chatId];
-        const response = await getPrayerTimes(cityKey);
-        bot.telegram.sendMessage(chatId, `🔔 **إشعار صلاة:**\n${response.text}`);
+// 📖 استقبال رقم السورة وإرسال الآيات
+bot.on("text", async (ctx) => {
+    const surahNumber = parseInt(ctx.message.text);
+    if (!isNaN(surahNumber) && surahNumber >= 1 && surahNumber <= 114) {
+        const surahText = await getQuranSurah(surahNumber);
+        ctx.reply(surahText);
     }
+});
+
+// 🔙 زر الرجوع إلى القائمة الرئيسية
+bot.hears("🔙 رجوع", (ctx) => {
+    ctx.reply("🔙 رجعتك للقائمة الرئيسية:", 
+        Markup.keyboard([
+            ["🕌 مواقيت الصلاة", "📿 أذكار"],
+            ["📻 إذاعات القرآن", "📖 سورة من القرآن"]
+        ]).resize()
+    );
 });
 
 // 🚀 تشغيل البوت
